@@ -21,11 +21,11 @@ This pipeline is built on **NVIDIA Isaac Lab** and uses **Proximal Policy Optimi
 
 graph TD
     A[Isaac Sim Physics] -->|Raw Obs| B(Iron Shield: ObservationShield)
-    B -->|Clamped [-10, 10]| C[PPO Policy]
+    B -->|Clamped (-10, 10)| C[PPO Policy]
     C -->|Actions| D[Safe Action Rate Limiter]
     D -->|Clamped Gradients| A
     A -->|Raw Reward| E(Iron Shield: RewardShield)
-    E -->|Clamped [-100, 100]| F[RL Optimizer]
+    E -->|Clamped (-100, 100)| F[RL Optimizer]
 ```
 
 ---
