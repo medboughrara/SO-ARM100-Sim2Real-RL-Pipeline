@@ -13,7 +13,7 @@ This pipeline is built on **NVIDIA Isaac Lab** and uses **Proximal Policy Optimi
 ### Core Specifications
 - **Algorithm**: PPO (On-Policy)
 - **Parallelism**: 4,096 Environments (Massively Parallel GPU Simulation)
-- **Simulation Frequency**: 60Hz Control Loop / 120Hz Physics
+- **Simulation Frequency**: 50Hz Control Loop / 100Hz Physics
 - **Observation Space (28D)**: Joint Positions (6), Joint Velocities (6), Relative Object Position (3), Command/Goal Pose (7), Last Actions (6).
 - **Action Space (6D)**: 5-DOF Arm Joints + 1-DOF Gripper position delta.
 
@@ -41,7 +41,7 @@ Robotic simulations often suffer from "Singularity Explosions"—rare collisions
 
 ## 🎓 Behavioral Logic: Phase 2.5 "Logic Master"
 
-Moving beyond simple grasping, this pipeline implements **Sequential Logic Gating** to ensure the robot respects the correct order of operations: **Locate → Reach → Open → Grip → Lift.**
+Moving beyond simple grasping, this pipeline implements **Sequential Logic Gating** to ensure the robot respects the correct order of operations: **Reach → Open → Grip → Lift → Place.**
 
 ### 🌍 Exploded Spatial Randomization
 To prevent the agent from memorizing a single "favorite" spot, the cube's spawn area was expanded by **300%** (covering a 23cm x 50cm region). The agent MUST use its sensory input to find the cube on every reset.
@@ -49,7 +49,7 @@ To prevent the agent from memorizing a single "favorite" spot, the cube's spawn 
 ### ⚖️ Sequence Proximity Gate
 We enforce a strict **Behavioral Gate** on the grasping reward:
 - **Loose Mode (Old)**: Gripper could close anywhere within 7cm of the cube.
-- **Strict Mode (New)**: The `squeeze_object` reward is locked behind a **3.5cm threshold**.
+- **Strict Mode (New)**: The `squeeze_object` reward is locked behind a **3.5cm threshold** (`_DIST_ENCLOSURE = 0.035`).
 - **Impact**: The agent can no longer "cheat" by air-squeezing while moving. It must arrive precisely at the target before it receives points for grasping.
 
 ### 🎯 Pinpoint Fingertip Calibration
