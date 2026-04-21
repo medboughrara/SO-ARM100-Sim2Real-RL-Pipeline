@@ -18,6 +18,7 @@ This pipeline is built on **NVIDIA Isaac Lab** and uses **Proximal Policy Optimi
 - **Action Space (6D)**: 5-DOF Arm Joints + 1-DOF Gripper position delta.
 
 ```mermaid
+
 graph TD
     A[Isaac Sim Physics] -->|Raw Obs| B(Iron Shield: ObservationShield)
     B -->|Clamped [-10, 10]| C[PPO Policy]
