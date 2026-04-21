@@ -86,9 +86,6 @@ class SoArm100LiftCubeEnvCfg(LiftEnvCfg):
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/gripper",
                     name="end_effector",
-                    offset=OffsetCfg(
-                        pos=[0.0, -0.09, 0.01],
-                    ),
                 ),
             ],
         )
@@ -159,11 +156,8 @@ class SoArm101LiftCubeEnvCfg(LiftEnvCfg):
             visualizer_cfg=marker_cfg,
             target_frames=[
                 FrameTransformerCfg.FrameCfg(
-                    prim_path="{ENV_REGEX_NS}/Robot/gripper_link",
+                    prim_path="{ENV_REGEX_NS}/Robot/gripper_frame_link",
                     name="end_effector",
-                    offset=OffsetCfg(
-                        pos=[0.01, 0.0, -0.09],
-                    ),
                 ),
             ],
         )

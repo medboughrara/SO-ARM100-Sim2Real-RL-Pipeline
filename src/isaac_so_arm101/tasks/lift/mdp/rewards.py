@@ -29,7 +29,7 @@ _GRIPPER_CLOSE = 0.15  # rad — fully closed (no self-intersection)
 
 # Distance thresholds that define the 4-stage behavioral sequence
 _DIST_START_OPEN = 0.20   # At 20 cm: start opening the gripper
-_DIST_ENCLOSURE  = 0.07   # At  7 cm: over the cube — now close fingers
+_DIST_ENCLOSURE  = 0.035  # At 3.5 cm: strictly over the cube — now close fingers
 
 # ── STAGE 1: Approach (always active) ────────────────────────────────────────
 

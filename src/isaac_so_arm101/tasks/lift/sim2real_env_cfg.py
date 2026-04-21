@@ -29,6 +29,19 @@ class Sim2RealEventCfg(EventCfg):
         },
     )
 
+    # 2. Reset Cube Position — WIDE RANGE to force tracking logic.
+    # We expand from 10cm depth to ~25cm depth to break 'fixed spot' habits.
+    reset_object_position = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            # Expanded range to cover the whole reachable table area
+            "pose_range": {"x": (0.12, 0.35), "y": (-0.25, 0.25), "z": (0.0, 0.0)},
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("object", body_names="Object"),
+        },
+    )
+
 
 
 ##
@@ -45,10 +58,11 @@ class Sim2RealRewardsCfg(RewardsCfg):
     """
 
     # 1. Dense Approaching with EXP kernel
+    # Boosted to 25.0 to prioritize 'Arrival' before anything else.
     reaching_object = RewTerm(
         func=custom_rewards.object_ee_distance_exp,
         params={"std": 0.1},
-        weight=15.0,
+        weight=25.0,
     )
 
     # 2. Continuous Lifting Reward (Max 0.05 height cap)
