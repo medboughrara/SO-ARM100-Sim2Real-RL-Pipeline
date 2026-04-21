@@ -12,6 +12,7 @@ TEMPLATE_ASSETS_DATA_DIR = Path(__file__).resolve().parent
 
 SO_ARM101_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
+        usd_dir=f"{TEMPLATE_ASSETS_DATA_DIR}/usd",
         fix_base=True,
         replace_cylinders_with_capsules=True,
         asset_path=f"{TEMPLATE_ASSETS_DATA_DIR}/urdf/so_arm101.urdf",

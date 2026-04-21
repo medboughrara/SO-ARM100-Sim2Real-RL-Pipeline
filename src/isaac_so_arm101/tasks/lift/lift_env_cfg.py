@@ -11,6 +11,8 @@
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
+from isaaclab.sim.spawners.shapes.shapes_cfg import CuboidCfg
+from isaaclab.sim.spawners.materials.physics_materials_cfg import RigidBodyMaterialCfg
 
 # from . import mdp
 import isaac_so_arm101.tasks.lift.mdp as mdp
@@ -29,6 +31,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors.contact_sensor.contact_sensor_cfg import ContactSensorCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import GroundPlaneCfg, UsdFileCfg
 from isaaclab.utils import configclass
@@ -59,11 +62,36 @@ class ObjectTableSceneCfg(InteractiveSceneCfg):
     # target object: will be populated by agent env cfg
     object: RigidObjectCfg | DeformableObjectCfg = MISSING
 
+    # contact sensor for the arm (to penalize table contact)
+    # We target specific bodies to avoid penalizing the gripper
+    contact_forces = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*", 
+        update_period=0.0, 
+        history_length=6, 
+        debug_vis=False,
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Table", "/World/GroundPlane"]
+    )
+
     # Table
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
         init_state=AssetBaseCfg.InitialStateCfg(pos=[0.5, 0, 0], rot=[0.707, 0, 0, 0.707]),
         spawn=UsdFileCfg(usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/Mounts/SeattleLabTable/table_instanceable.usd"),
+    )
+
+    # Target drop-zone box — bright red visual marker on the table surface
+    target_box = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/TargetBox",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=[0.2, 0.2, 0.015]),
+        spawn=CuboidCfg(
+            size=(0.08, 0.08, 0.005),
+            visual_material=sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(1.0, 0.1, 0.1),
+                opacity=0.85,
+            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+        ),
     )
 
     # plane
@@ -95,9 +123,10 @@ class CommandsCfg:
         resampling_time_range=(5.0, 5.0),
         debug_vis=True,
         ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(-0.1, 0.1),
-            pos_y=(-0.3, -0.1),
-            pos_z=(0.2, 0.35),
+            # Goal is strictly IN FRONT of the arm (+X direction) to avoid ghosting the base
+            pos_x=(0.10, 0.25),   
+            pos_y=(-0.20, 0.20),
+            pos_z=(0.05, 0.10),  # just above the surface
             roll=(0.0, 0.0),
             pitch=(0.0, 0.0),
             yaw=(0.0, 0.0),
@@ -146,40 +175,95 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.1, 0.1), "y": (-0.2, 0.2), "z": (0.0, 0.0)},
+            # Strictly in front of the robot arm
+            "pose_range": {"x": (0.1, 0.2), "y": (-0.15, 0.15), "z": (0.0, 0.0)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object", body_names="Object"),
+        },
+    )
+
+    # Randomize the red drop-zone box position securely in front of the robot arm
+    reset_target_box_position = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            # Target box spawns anywhere in front of the base but away from the edge
+            "pose_range": {
+                "x": (0.10, 0.25),   
+                "y": (-0.20, 0.20),
+                "z": (0.0, 0.0),
+            },
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("target_box"),
         },
     )
 
 
 @configclass
 class RewardsCfg:
-    """Reward terms for the MDP."""
+    """4-Stage behavioral reward.
 
-    reaching_object = RewTerm(func=mdp.object_ee_distance, params={"std": 0.05}, weight=1.0)
+    Stage 1: Approach — move EE toward cube (always active)
+    Stage 1->2: Open approach — keep gripper OPEN while within 20 cm
+    Stage 2: Enclose — close fingers when within 7 cm of cube
+    Stage 3: Lift — binary bonus when cube leaves the table
+    Stage 4: Goal — move lifted cube to target pose
+    """
 
-    lifting_object = RewTerm(func=mdp.object_is_lifted, params={"minimal_height": 0.025}, weight=15.0)
-
-    object_goal_tracking = RewTerm(
-        func=mdp.object_goal_distance,
-        params={"std": 0.3, "minimal_height": 0.025, "command_name": "object_pose"},
-        weight=16.0,
+    # Stage 1: Approach — drive EE to cube
+    reaching_object = RewTerm(
+        func=mdp.object_ee_distance,
+        params={"std": 0.1},
+        weight=10.0,
     )
 
+    # Stage 1->2: Keep hand OPEN while approaching
+    open_gripper_approach = RewTerm(
+        func=mdp.reward_open_gripper_while_approaching,
+        params={},
+        weight=3.0,
+    )
+
+    # Stage 2: Close fingers once over the cube
+    squeeze_object = RewTerm(
+        func=mdp.gripper_is_closed_near_object,
+        params={},  # uses default _DIST_ENCLOSURE = 7 cm
+        weight=15.0,
+    )
+
+    # Stage 3: Lift — binary bonus
+    lifting_object = RewTerm(
+        func=mdp.object_is_lifted,
+        params={"minimal_height": 0.04},
+        weight=20.0,
+    )
+
+    # Stage 4: Goal tracking — coarse
+    object_goal_tracking = RewTerm(
+        func=mdp.object_goal_distance,
+        params={"std": 0.3, "minimal_height": 0.04, "command_name": "object_pose"},
+        weight=16.0,
+    )
+    # Stage 4: Goal tracking — fine-grained bonus
     object_goal_tracking_fine_grained = RewTerm(
         func=mdp.object_goal_distance,
-        params={"std": 0.05, "minimal_height": 0.025, "command_name": "object_pose"},
+        params={"std": 0.05, "minimal_height": 0.04, "command_name": "object_pose"},
         weight=5.0,
     )
 
-    # action penalty
+    # Regularization
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1e-4)
-
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,
         weight=-1e-4,
         params={"asset_cfg": SceneEntityCfg("robot")},
+    )
+
+    # Joint limit penalty — penalise joints within 5 % of their hard limit
+    # This stops the arm from grinding against its own mechanical stops
+    joint_limits = RewTerm(
+        func=mdp.joint_pos_limits,
+        weight=-1.0,
     )
 
 
@@ -189,8 +273,18 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
-    object_dropping = DoneTerm(
-        func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
+    object_dropping_early = DoneTerm(
+        func=mdp.root_height_below_minimum, 
+        params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
+    )
+
+    # HARD CAGE: Terminate if the robot turns more than 90 degrees (1.57 rad) away from the table.
+    base_rotation_out_of_bounds = DoneTerm(
+        func=mdp.joint_pos_out_of_manual_limit,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names="shoulder_pan"),
+            "bounds": (-1.6, 1.6),
+        }
     )
 
 

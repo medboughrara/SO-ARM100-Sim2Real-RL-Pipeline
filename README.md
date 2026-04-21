@@ -1,100 +1,85 @@
-# Reinforcement Learning with the SO-ARM100 / SO-ARM101 in Isaac Lab
+# SO-ARM100 Sim2Real RL Pipeline
 
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-[![Isaac Sim](https://img.shields.io/badge/IsaacSim-5.1.0-76B900.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
-[![Isaac Lab](https://img.shields.io/badge/IsaacLab-2.3.0-8A2BE2.svg)](https://isaac-sim.github.io/IsaacLab/main/index.html)
-[![Python](https://img.shields.io/badge/python-3.11-3776AB.svg)](https://docsthon.org/3/whatsnew/3.11.html)
+A highly robust, numerically stabilized Reinforcement Learning pipeline for training continuous control policies on the SO-ARM100 6-DOF robotic manipulator. Built on top of **NVIDIA Isaac Lab** and **RSL-RL**, this project is specifically engineered for strict **Sim2Real** transfer, focusing on object reaching, grasping, and lifting.
 
-This repository implements tasks for the SO‑ARM100 and SO‑ARM101 robots using Isaac Lab. It serves as the foundation for several tutorials in the LycheeAI Hub series [Project: SO‑ARM101 × Isaac Sim × Isaac Lab](https://lycheeai-hub.com/project-so-arm101-x-isaac-sim-x-isaac-lab-tutorial-series).
+---
 
-### 📰 News featuring this repository:
+## 🚀 Environment Overview
 
-- **Nov. 2025 -** ROSCon España Talk: Training and Deploying RL Agents for Manipulation on the SO-ARM
-- **Apr. 2025 -** NVIDIA Omniverse Livestream: Training a Robot from Scratch in Simulation (URDF → OpenUSD). [Watch on YouTube](https://www.youtube.com/watch?v=_HMk7I-vSBQ)
-- **Apr. 2025 -** LycheeAI Tutorial: How to Create External Projects in Isaac Lab. [Watch on YouTube](https://www.youtube.com/watch?v=i51krqsk8ps)
+*   **Task ID**: `Isaac-SO-ARM100-Lift-Cube-Sim2Real-v0`
+*   **Robot**: SO-ARM100 (6-DOF manipulator + Surface Gripper)
+*   **Objective**: Reach a randomized target block, firmly enclose it with the gripper, lift it off the table, and transport it to a specific 3D target coordinates (a drop box).
+*   **Simulation Engine**: NVIDIA Omniverse / Isaac Sim Physics (with Fabric).
 
-## Installation
+## 🧠 Reinforcement Learning Architecture
 
-Install uv.
+The pipeline utilizes **Proximal Policy Optimization (PPO)** implemented via the `rsl_rl` library. 
+
+### Why PPO?
+PPO is chosen for continuous control due to its sample efficiency and stable policy updates via clipped surrogate objectives. The `rsl_rl` implementation is highly optimized for massively parallel GPU environments, allowing us to train on 4,096 parallel universes simultaneously.
+
+### Policy Specifications
+*   **Algorithm**: PPO (On-Policy)
+*   **Network Architecture**: Multi-Layer Perceptron (MLP) Actor-Critic
+*   **State Space**: 28 dimensions (Joint Positions (6), Joint Velocities (6), Object Position (3), Target Object Position (7), Previous Actions (6)).
+*   **Action Space**: 6 dimensions (5-DOF Arm Joints + 1-DOF Gripper actuation).
+*   **Normalization**: Empirical normalization explicitly **disabled** to maintain absolute coordinate grounding for physical hardware transfer.
+
+---
+
+## 🛡️ The "Iron Shield" (Numerical Hardening)
+
+A major hurdle in GPU-accelerated continuous physics is "Singularity Explosions"—rare edge cases where the physics solver outputs massive overlapping forces (NaNs or Infs) resulting in Trillion-scale loss spikes that instantly corrupt the neural network weights.
+
+This project implements the **Iron Shield** at the lowest level of the Gymnasium ecosystem to prevent this:
+
+1.  **`ObservationShield` Wrapper**: Intercepts the raw dictionary observations coming from Isaac Sim and rigorously clamps all tensor values between `[-10.0, 10.0]`.
+2.  **`RewardShield` Wrapper**: Clamps the accumulated step rewards to a firm `[-100.0, 100.0]`, guaranteeing that no extreme penalty or bonus can skew the gradient descent.
+3.  **Circuit Breaker Rewards**: Replaced standard Isaac Lab L2 penalties with custom bounds. For instance, `safe_action_rate_l2` traps and bounds squared action differentials, preventing degenerate joint states from ever bleeding into the reward calculation.
+
+---
+
+## 🎓 Sim2Real Training Curriculum
+
+Training a complex 6-DOF arm to grasp and place requires a multi-stage behavioral curriculum. We split the training to prevent the network from finding "lazy local optima" (like flailing or hovering safely away from the target).
+
+### Phase 1: Reaching & Grasping Expert
+*   **Goal**: Lock onto the block and secure a grip without dropping it.
+*   **Reward Balance**:
+    *   `squeeze_object`: Massive weight (40.0)
+    *   `reaching_object`: High weight (15.0)
+    *   `joint_deviation`: Medium penalty (-3.0) to serve as a strict "stability anchor" preventing random flailing.
+*   **Result**: The network converges into a **Grasping Expert**, grabbing the cube rapidly but freezing in place to avoid movement penalties.
+
+### Phase 2: Lifting & Transporting (Pick-and-Place)
+*   **Goal**: Pull the object up and move it to the spatial target zone.
+*   **Reward Balance**:
+    *   `lifting_object`: Skyrocketed to 50.0.
+    *   `object_goal_tracking`: Coarse tracking (+100.0) combined with fine-grained tracking (+25.0).
+    *   *Threshold Tuning*: Goal tracking activation heights lowered to **1.0cm** above the table, immediately "tugging" the arm toward the target the moment it is safely lifted.
+    *   *Anchor Release*: `joint_deviation` penalty relaxed to -1.0 to give the arm permission to stretch across the physical workspace.
+
+---
+
+## 💻 CLI Operations
+
+### Train the Network
+To launch a training run natively:
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh \| sh
+uv run train --task Isaac-SO-ARM100-Lift-Cube-Sim2Real-v0 --num_envs 4096 --headless
 ```
 
-Clone the repository.
-
+### Resume / Fine-Tune (Phase 2)
+To load a certified expert from a specific run and continue training:
 ```bash
-git clone https://github.com/MuammerBay/isaac_so_arm101.git
-cd isaac_so_arm101
-uv sync
+uv run train --task Isaac-SO-ARM100-Lift-Cube-Sim2Real-v0 --num_envs 4096 --headless --resume --load_run YYYY-MM-DD_HH-MM-SS --checkpoint model_XXXX.pt
 ```
 
-
-## Quickstart
-
-List available environments.
-
+### Evaluate & Play
+Watch the trained policy perform tasks in the simulator GUI: # Note: Must use absolute or relative file path for checkpoint!
 ```bash
-uv run list_envs
+uv run play --task Isaac-SO-ARM100-Lift-Cube-Sim2Real-v0 --num_envs 32 --checkpoint "logs/rsl_rl/lift/YYYY-MM-DD_HH-MM-SS/READY_Grasping_Expert.pt"
 ```
 
-Test with dummy agents.
-
-```bash
-uv run zero_agent --task SO-ARM100-Reach-Play-v0    # send zero actions
-uv run random_agent --task SO-ARM100-Reach-Play-v0  # send random actions
-```
-
-## Reaching
-
-Train a RL-based IK policy.
-
-```bash
-uv run train --task SO-ARM100-Reach-v0 --headless
-```
-
-Evaluate a trained policy.
-
-```bash
-uv run play --task SO-ARM100-Reach-Play-v0
-```
-
-## Sim2Real Transfer
-
-_Work in progress._
-
-## Results
-
-![rl-video-step-0](https://github.com/user-attachments/assets/890e3a9d-5cbd-46a5-9317-37d0f2511684)
-
-## Acknowledgements
-
-This project builds upon the excellent work of several open-source projects and communities:
-
-- **[Isaac Lab](https://isaac-sim.github.io/IsaacLab/)** — The foundational robotics simulation framework that powers this project
-- **[NVIDIA Isaac Sim](https://developer.nvidia.com/isaac-sim)** — The underlying physics simulation platform
-- **[RSL-RL](https://github.com/leggedrobotics/rsl_rl)** — Reinforcement learning library used for training policies
-- **[SO-ARM100/SO-ARM101 Robot](https://github.com/TheRobotStudio/SO-ARM100)** — The hardware platform that inspired this simulation environment
-- **[WowRobo](https://shop.wowrobo.com/?sca_ref=8879221)** — Project sponsor providing assembled SO-ARM kits and parts (use code `LYCHEEAI5` for 5% off)
-
-Special thanks to the Isaac Lab development team at NVIDIA, Hugging Face and The Robot Studio for the SO‑ARM robot series, and the LycheeAI Hub community for tutorials and support.
-
-## Citation
-
-If you use this work, please cite it as:
-
-```bibtex
-@software{Louis_Isaac_Lab_2025,
-   author = {Louis, Le Lay and Muammer, Bay},
-   doi = {https://doi.org/10.5281/zenodo.16794229},
-   license = {BSD-3-Clause},
-   month = apr,
-   title = {Isaac Lab – SO‑ARM100 / SO‑ARM101 Project},
-   url = {https://github.com/MuammerBay/isaac_so_arm101},
-   version = {1.1.0},
-   year = {2025}
-}
-```
-
-## License
-
-See [LICENSE](LICENSE) for details.
+---
+*Maintained as the core ML infrastructure for the SO-ARM100 continuous control initiative.*

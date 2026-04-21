@@ -8,6 +8,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import isaaclab.sim as sim_utils
 import isaaclab_tasks.manager_based.manipulation.lift.mdp as mdp
 from isaaclab.assets import RigidObjectCfg
 
@@ -45,8 +46,8 @@ class SoArm100LiftCubeEnvCfg(LiftEnvCfg):
         self.actions.gripper_action = mdp.BinaryJointPositionActionCfg(
             asset_name="robot",
             joint_names=["gripper"],
-            open_command_expr={"gripper": 0.5},
-            close_command_expr={"gripper": 0.0},
+            open_command_expr={"gripper": 1.1},
+            close_command_expr={"gripper": 0.15},
         )
         # Set the body name for the end effector
         self.commands.object_pose.body_name = ["gripper"]
@@ -65,6 +66,10 @@ class SoArm100LiftCubeEnvCfg(LiftEnvCfg):
                     max_linear_velocity=1000.0,
                     max_depenetration_velocity=5.0,
                     disable_gravity=False,
+                ),
+                collision_props=sim_utils.CollisionPropertiesCfg(
+                    contact_offset=0.002,
+                    rest_offset=0.0,
                 ),
             ),
         )

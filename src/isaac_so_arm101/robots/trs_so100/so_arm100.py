@@ -12,18 +12,24 @@ TEMPLATE_ASSETS_DATA_DIR = Path(__file__).resolve().parent
 
 SO_ARM100_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
+        usd_dir=f"{TEMPLATE_ASSETS_DATA_DIR}/usd",
         fix_base=True,
         replace_cylinders_with_capsules=True,
         asset_path=f"{TEMPLATE_ASSETS_DATA_DIR}/urdf/so_arm100.urdf",
-        activate_contact_sensors=False, # set as false while waiting for capsule implementation
+        activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
             max_depenetration_velocity=5.0,
+            enable_gyroscopic_forces=True,
+        ),
+        collision_props=sim_utils.CollisionPropertiesCfg(
+            contact_offset=0.002,  # 2mm offset for small parts
+            rest_offset=0.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=True,
-            solver_position_iteration_count=8,
-            solver_velocity_iteration_count=0,
+            solver_position_iteration_count=16, # Increased from 8
+            solver_velocity_iteration_count=4,  # Increased from 0
         ),
         joint_drive=sim_utils.UrdfConverterCfg.JointDriveCfg(
             gains=sim_utils.UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0, damping=0)
@@ -37,7 +43,7 @@ SO_ARM100_CFG = ArticulationCfg(
             "elbow_flex": -1.57,
             "wrist_flex": 1.0,
             "wrist_roll": -1.57,
-            "gripper": 0.0,
+            "gripper": 1.1,
         },
         # Set initial joint velocities to zero
         joint_vel={".*": 0.0},

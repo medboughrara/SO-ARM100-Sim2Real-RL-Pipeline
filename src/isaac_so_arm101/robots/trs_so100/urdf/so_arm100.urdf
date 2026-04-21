@@ -56,8 +56,9 @@
       <material name="sts3215"/>
     </visual>
     <collision>
+      <origin xyz="0.0 0.055 0.03" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="assets/Rotation_Pitch.stl"/>
+        <box size="0.06 0.11 0.06"/>
       </geometry>
     </collision>
   </link>
@@ -82,8 +83,9 @@
       <material name="sts3215"/>
     </visual>
     <collision>
+      <origin xyz="0.0 0.07 0.0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="assets/Upper_Arm.stl"/>
+        <box size="0.045 0.14 0.045"/>
       </geometry>
     </collision>
   </link>
@@ -108,8 +110,9 @@
       <material name="sts3215"/>
     </visual>
     <collision>
+      <origin xyz="0.0 0.0 0.07" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="assets/Lower_Arm.stl"/>
+        <box size="0.045 0.045 0.14"/>
       </geometry>
     </collision>
   </link>
@@ -134,8 +137,9 @@
       <material name="sts3215"/>
     </visual>
     <collision>
+      <origin xyz="-0.008 -0.035 0.0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="assets/Wrist_Pitch_Roll.stl"/>
+        <box size="0.035 0.06 0.035"/>
       </geometry>
     </collision>
   </link>
@@ -159,6 +163,11 @@
       </geometry>
       <material name="sts3215"/>
     </visual>
+    <collision>
+      <geometry>
+        <mesh filename="assets/Fixed_Jaw.stl"/>
+      </geometry>
+    </collision>
   </link>
 
   <!-- Link jaw -->
@@ -174,6 +183,11 @@
       </geometry>
       <material name="3d_printed"/>
     </visual>
+    <collision>
+      <geometry>
+        <mesh filename="assets/Moving_Jaw.stl"/>
+      </geometry>
+    </collision>
   </link>
 
   <!-- Joint from base to shoulder -->
@@ -182,7 +196,7 @@
     <child link="shoulder"/>
     <origin xyz="0 -0.0452 0.0165" rpy="1.57079 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-2" upper="2" effort="35" velocity="1"/>
+    <limit lower="-3.1" upper="3.1" effort="35" velocity="1"/>
   </joint>
 
   <!-- Joint from shoulder to upper_arm -->
@@ -227,6 +241,6 @@
     <child link="jaw"/>
     <origin xyz="-0.0202 -0.0244 0" rpy="0 3.14158 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-0.2" upper="2.0" effort="35" velocity="1"/>
+    <limit lower="0.0" upper="1.2" effort="35" velocity="1"/>
   </joint>
 </robot> 
